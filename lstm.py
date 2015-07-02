@@ -20,7 +20,7 @@ class LSTM(object):
         # Initialize all the layers and the links between layers
         # First create a single layer example
         # Declare all the attributes :
-        self.lr = 0.001
+        self.lr = 100000
         self.momentum = 0.9
         self.x = T.matrix()
         self.y = T.ivector()
@@ -77,7 +77,7 @@ class LSTM(object):
 
             # Update all the parameters :
         # Update the parameters :
-        updates = [i.get_value()-j for i,j in zip(self.params,result)]
+        updates = [i.get_value()-self.lr*j for i,j in zip(self.params,result)]
         for i in range(len(self.params)):
             self.params[i].set_value(updates[i])
 
@@ -86,7 +86,7 @@ class LSTM(object):
         for inputs in  gradient_dataset.iterate(update=True):
             mean_cost+=self.cost_fn(inputs[0],inputs[1])
 
-        mean_cost/gradient_dataset.number_batches
+        mean_cost = mean_cost/gradient_dataset.number_batches
 
         print " Cost : "+str(mean_cost)
 
@@ -318,7 +318,7 @@ if __name__ == '__main__':
     n_in = trX[0].shape[1]
     n_hidden = 20
     n_layers = 1
-    n_updates = 10
+    n_updates = 100
     n_classes = 7
     # Store the raw classes anyway
     #labels = trY
