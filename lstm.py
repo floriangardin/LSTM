@@ -23,7 +23,7 @@ class LSTM(object):
         self.lr = 0.001
         self.momentum = 0.9
         self.x = T.matrix()
-        self.y = T.matrix()
+        self.y = T.ivector()
         # Size parameters
         self.n_in = n_in
         self.n_hidden = n_hidden
@@ -41,15 +41,10 @@ class LSTM(object):
 
         # cost function we can directly implement it using y_pred ...
         # Testing functions  :
-        self.test_fn = theano.function([self.x],self.lstm_layer.h)
-        self.test_softmax = theano.function([self.x],self.softmax_layer.p_y_given_x)
-        self.test_y = theano.function([self.y],self.y)
-        self.test_x = theano.function([self.x],self.x)
-        self.test_sub = theano.function([self.x,self.y],self.softmax_layer.p_y_given_x - self.y)
-        self.test_ind = theano.function([self.x,self.y],[self.softmax_layer.p_y_given_x,self.y])
+
 
         ###
-        self.cost = T.mean((self.softmax_layer.p_y_given_x - self.y)**2)
+        self.cost = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
         self.grad_cost = T.grad(self.cost, self.params)
         self.cost_fn = theano.function(inputs=[self.x,self.y],outputs=self.cost)
         self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
@@ -328,7 +323,7 @@ if __name__ == '__main__':
     # Store the raw classes anyway
     #labels = trY
     # Compute probabilistic labelling :
-    trY = [int_to_label(i,n_classes) for i in trY]
+    #trY = [int_to_label(i,n_classes) for i in trY]
     gradient_dataset = SequenceDataset([trX, trY], batch_size=None,
                                        number_batches=len(trX))
 
