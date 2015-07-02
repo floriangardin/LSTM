@@ -2,9 +2,16 @@ import numpy as np
 import theano
 import theano.tensor as T
 from process import process
-
+from ipdb import set_trace as pause
 
 # This object contains the global network
+def int_to_label(y, n_classes):
+
+    result = np.zeros((y.shape[0], n_classes))
+    for idx,i in enumerate(y):
+        result[idx][int(i)] = 1
+    return result
+
 class LSTM(object):
 
     def __init__(self,n_in,n_layers,n_hidden,n_classes):
@@ -16,7 +23,7 @@ class LSTM(object):
         self.lr = 0.001
         self.momentum = 0.9
         self.x = T.matrix()
-        self.y = T.vector()
+        self.y = T.matrix()
         # Size parameters
         self.n_in = n_in
         self.n_hidden = n_hidden
@@ -33,10 +40,10 @@ class LSTM(object):
 
 
         # cost function we can directly implement it using y_pred ...
-        self.cost = T.mean(T.nnet.binary_crossentropy(self.softmax_layer.y_pred, self.y))
+        self.cost = T.mean(T.nnet.binary_crossentropy(self.softmax_layer.p_y_given_x, self.y))
         self.grad_cost = T.grad(self.cost, self.params)
         self.cost_fn = theano.function(inputs=[self.x,self.y],outputs=self.cost)
-        self.grad_cost_fn =theano.function([self.x,self.y], self.grad_cost)
+        self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
 
         # g = T.grad(costs[0], p)
         # g = map(T.as_tensor_variable, g)  # for CudaNdarray
@@ -54,10 +61,11 @@ class LSTM(object):
         """
         #gradient = np.zeros(sum(self.sizes), dtype=theano.config.floatX)
 
-        result =[np.zeros(i.shape) for i in self.params]
+        result =[np.zeros(i.get_value().shape) for i in self.params]
         costs = []
         for inputs in gradient_dataset.iterate(update=True):
             # Construct the list of gradient ( one matrix for each param )
+            pause()
             result =[(i+j)/ gradient_dataset.number_batches for i, j in zip(result, self.grad_cost_fn(inputs))]
             # Flat the result and add it to the gradient (average over batches )
             #gradient += self.list_to_flat(result[:len(self.p)]) / gradient_dataset.number_batches
@@ -100,8 +108,8 @@ class Softmax_layer(object):
                 e = T.exp(x)
                 return e / T.sum(e, axis=1)
 
-        self.y_pred = symbolic_softmax(T.dot(self.xt,self.W_soft))
-
+        self.p_y_given_x = symbolic_softmax(T.dot(self.xt,self.W_soft))
+        self.y_pred = T.argmax(self.p_y_given_x, axis=-1)
 
 # This object is a memory cell
 
@@ -228,6 +236,7 @@ class LSTM_layer(object):
         [self.h,self.c], updates = theano.scan(fn=self.step,sequences=self.x,outputs_info=[self.h0,self.c0])
 
         # Formulas :
+
         # Wi, Wf, Wc, Wo, Ui, Uf, Uc, Uo, Vo
 
         # it = sigma(Wi*xt + Ui*ht-1 + bi)
@@ -303,14 +312,19 @@ if __name__ == '__main__':
 
     trX, trY = process()
 
-    gradient_dataset = SequenceDataset([trX, trY], batch_size=None,
-                                       number_batches=len(trX))
-
     n_in = trX[0].shape[1]
     n_hidden = 20
     n_layers = 1
     n_updates = 10
     n_classes = 7
+    # Store the raw classes anyway
+    labels = trY
+    # Compute probabilistic labelling :
+    trY = [int_to_label(i,n_classes) for i in trY]
+    gradient_dataset = SequenceDataset([trX, trY], batch_size=None,
+                                       number_batches=len(trX))
+
+
     model = LSTM(n_in,n_layers,n_hidden,n_classes)
 
 
