@@ -7,7 +7,7 @@ from process import process
 # This object contains the global network
 class LSTM(object):
 
-    def __init__(self,n_in,n_layers,n_hidden):
+    def __init__(self,n_in,n_layers,n_hidden,n_classes):
         print "LSTM"
 
         # Initialize all the layers and the links between layers
@@ -20,12 +20,13 @@ class LSTM(object):
         # Size parameters
         self.n_in = n_in
         self.n_hidden = n_hidden
+        self.n_classes = n_classes
 
         # Define one layer of LSTM and one layer of softmax
         # Maybe we could add a feedforward layer later
 
         self.lstm_layer = LSTM_layer(self.x,n_in,n_hidden)
-        self.softmax_layer = Softmax_layer(self.lstm_layer.h)
+        self.softmax_layer = Softmax_layer(self.lstm_layer.h,n_hidden,n_classes)
         self.params = [self.lstm_layer.W_i,self.lstm_layer.W_c,self.lstm_layer.W_f,self.lstm_layer.W_o,self.lstm_layer.U_i
                        ,self.lstm_layer.U_f,self.lstm_layer.U_c,self.lstm_layer.V_o,self.lstm_layer.bi,self.lstm_layer.bf,
                        self.lstm_layer.bc,self.lstm_layer.bo,self.lstm_layer.h0]
@@ -41,12 +42,6 @@ class LSTM(object):
         # g = map(T.as_tensor_variable, g)  # for CudaNdarray
         # self.f_gc = theano.function(inputs, g + costs, on_unused_input='ignore')  # during gradient computation
         # Update law in a form, misses the x*grad part !!!
-        updates = (self.params, self.params - self.lr*self.grad_cost_fn)
-
-        train_model = theano.function(inputs=[self.x,self.y],
-                                      outputs=self.cost_fn,
-                                      updates=updates
-                                       )
 
 
 
@@ -57,7 +52,7 @@ class LSTM(object):
         :param y: n_steps * 1
         :return:
         """
-        gradient = np.zeros(sum(self.sizes), dtype=theano.config.floatX)
+        #gradient = np.zeros(sum(self.sizes), dtype=theano.config.floatX)
 
         result =[np.zeros(i.shape) for i in self.params]
         costs = []
@@ -89,10 +84,10 @@ class LSTM(object):
         return np.concatenate([i.flatten() for i in l])
 
 class Softmax_layer(object):
-    # TODO It misses the actual layer
-    def __init__(self, xt, n_classes):
+
+    def __init__(self, xt,n_in, n_classes):
         # Not sure if shared_variable.shape works but it seems so
-        W_soft_init = np.asarray(np.random.uniform(size=(n_classes, xt.shape[0]),
+        W_soft_init = np.asarray(np.random.uniform(size=(n_in,n_classes),
                                           low=-.01, high=.01),
                                           dtype=theano.config.floatX)
         self.W_soft = theano.shared(value=W_soft_init,name='W_soft')
@@ -103,9 +98,9 @@ class Softmax_layer(object):
 
         def symbolic_softmax(x):
                 e = T.exp(x)
-                return e / T.sum(e, axis=1).dimshuffle(0, 'x')
+                return e / T.sum(e, axis=1)
 
-        self.y_pred = symbolic_softmax(T.dot(self.xt))
+        self.y_pred = symbolic_softmax(T.dot(self.xt,self.W_soft))
 
 
 # This object is a memory cell
@@ -221,7 +216,8 @@ class LSTM_layer(object):
 
         co_init = np.zeros((1,n_hidden), dtype=theano.config.floatX)
         self.c0 = theano.shared(value=co_init,name='c0')
-        
+
+        self.c = T.matrix()
         
         # xt
         
@@ -229,8 +225,8 @@ class LSTM_layer(object):
         self.x = x
 
 
-        outputs, updates = theano.scan(fn=self.step,outputs_info=[self.h0,self.c0], sequences=[self.x,self.h])
-        self.h = outputs[0]
+        [self.h,self.c], updates = theano.scan(fn=self.step,sequences=self.x,outputs_info=[self.h0,self.c0])
+
         # Formulas :
         # Wi, Wf, Wc, Wo, Ui, Uf, Uc, Uo, Vo
 
@@ -242,12 +238,12 @@ class LSTM_layer(object):
         # ht = ot * tanh(Ct)
 
     def step(self,xt,ht_pre,ct_pre):
-        it = T.net.sigmoid(T.dot(xt,self.W_i)+T.dot(ht_pre,self.U_i)+self.bi)
-        ct_est = T.net.tanh(T.dot(xt,self.W_c)+T.dot(ht_pre,self.U_c)+self.bc)
-        ft = T.net.sigmoid(T.dot(xt,self.W_f)+T.dot(ht_pre,self.U_f)+self.bf)
-        ct = T.multiply(it,ct_est)+T.multiply(ft,ct_pre)
-        ot = T.net.sigmoid(T.dot(xt,self.W_o)+T.dot(ht_pre,self.U_o)+T.dot(ct,self.V_o)+self.bo)
-        ht = T.multiply(ot,T.net.tanh(ct))
+        it = T.nnet.sigmoid(T.dot(xt,self.W_i)+T.dot(ht_pre,self.U_i)+self.bi)
+        ct_est = T.tanh(T.dot(xt,self.W_c)+T.dot(ht_pre,self.U_c)+self.bc)
+        ft = T.nnet.sigmoid(T.dot(xt,self.W_f)+T.dot(ht_pre,self.U_f)+self.bf)
+        ct = it*ct_est+ft*ct_pre
+        ot = T.nnet.sigmoid(T.dot(xt,self.W_o)+T.dot(ht_pre,self.U_o)+T.dot(ct,self.V_o)+self.bo)
+        ht = ot*T.tanh(ct)
 
         return ht,ct
 
@@ -258,7 +254,6 @@ class SequenceDataset:
 
   def __init__(self, data, batch_size, number_batches, minimum_size=10):
     '''SequenceDataset __init__
-
   data : list of lists of numpy arrays
     Your dataset will be provided as a list (one list for each graph input) of
     variable-length tensors that will be used as mini-batches. Typically, each
@@ -315,11 +310,12 @@ if __name__ == '__main__':
     n_hidden = 20
     n_layers = 1
     n_updates = 10
-    model = LSTM(n_in,n_layers,n_hidden)
+    n_classes = 7
+    model = LSTM(n_in,n_layers,n_hidden,n_classes)
 
 
     for i in range(n_updates):
-        LSTM.train(gradient_dataset)
+        model.train(gradient_dataset)
 
 
 
