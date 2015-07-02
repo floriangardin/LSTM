@@ -41,6 +41,8 @@ class LSTM(object):
 
         # cost function we can directly implement it using y_pred ...
 
+        self.test_fn = theano.function([self.x],self.lstm_layer.h)
+        self.test_softmax = theano.function([self.x],self.softmax_layer.p_y_given_x)
 
         self.cost = T.mean((self.softmax_layer.p_y_given_x - self.y))
         self.grad_cost = T.grad(self.cost, self.params)
@@ -107,7 +109,7 @@ class Softmax_layer(object):
 
         def symbolic_softmax(x):
                 e = T.exp(x)
-                return e / T.sum(e, axis=1)
+                return e / T.sum(e, axis=1).dimshuffle(0, 'x')
 
         self.p_y_given_x = symbolic_softmax(T.dot(self.xt,self.W_soft))
         self.y_pred = T.argmax(self.p_y_given_x, axis=-1)
@@ -196,34 +198,34 @@ class LSTM_layer(object):
 
         # Init hidden state vector :
 
-        h_init = np.zeros((1,n_hidden), dtype=theano.config.floatX)
+        h_init = np.zeros((n_hidden), dtype=theano.config.floatX)
         self.h = theano.shared(value=h_init, name='h')
 
         # Init biases :
 
         # forget biases:
 
-        bf_init = np.zeros((1,n_hidden), dtype=theano.config.floatX)
+        bf_init = np.zeros((n_hidden), dtype=theano.config.floatX)
         self.bf = theano.shared(value=bf_init, name='bf')
 
         # input biases :
-        bi_init = np.zeros((1,n_hidden), dtype=theano.config.floatX)
+        bi_init = np.zeros((n_hidden), dtype=theano.config.floatX)
         self.bi= theano.shared(value=bi_init, name='bi')
 
 
         # candidate biases :
-        bc_init = np.zeros((1,n_hidden), dtype=theano.config.floatX)
+        bc_init = np.zeros((n_hidden), dtype=theano.config.floatX)
         self.bc= theano.shared(value=bc_init, name='bc')
         
         
         # candidate biases :
-        bo_init = np.zeros((1,n_hidden), dtype=theano.config.floatX)
+        bo_init = np.zeros((n_hidden), dtype=theano.config.floatX)
         self.bo= theano.shared(value=bo_init, name='bo')
         
-        ho_init = np.zeros((1,n_hidden), dtype=theano.config.floatX)
+        ho_init = np.zeros((n_hidden), dtype=theano.config.floatX)
         self.h0 = theano.shared(value=ho_init,name='h0')
 
-        co_init = np.zeros((1,n_hidden), dtype=theano.config.floatX)
+        co_init = np.zeros((n_hidden), dtype=theano.config.floatX)
         self.c0 = theano.shared(value=co_init,name='c0')
 
         self.c = T.matrix()
@@ -235,7 +237,7 @@ class LSTM_layer(object):
 
 
         [self.h,self.c], updates = theano.scan(fn=self.step,sequences=self.x,outputs_info=[self.h0,self.c0])
-
+        #self.h = theano.tensor.extra_ops.squeeze(self.h)
         # Formulas :
 
         # Wi, Wf, Wc, Wo, Ui, Uf, Uc, Uo, Vo
