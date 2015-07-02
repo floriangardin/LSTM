@@ -40,11 +40,16 @@ class LSTM(object):
 
 
         # cost function we can directly implement it using y_pred ...
-
+        # Testing functions  :
         self.test_fn = theano.function([self.x],self.lstm_layer.h)
         self.test_softmax = theano.function([self.x],self.softmax_layer.p_y_given_x)
+        self.test_y = theano.function([self.y],self.y)
+        self.test_x = theano.function([self.x],self.x)
+        self.test_sub = theano.function([self.x,self.y],self.softmax_layer.p_y_given_x - self.y)
+        self.test_ind = theano.function([self.x,self.y],[self.softmax_layer.p_y_given_x,self.y])
 
-        self.cost = T.mean((self.softmax_layer.p_y_given_x - self.y))
+        ###
+        self.cost = T.mean((self.softmax_layer.p_y_given_x - self.y)**2)
         self.grad_cost = T.grad(self.cost, self.params)
         self.cost_fn = theano.function(inputs=[self.x,self.y],outputs=self.cost)
         self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
@@ -65,11 +70,11 @@ class LSTM(object):
         #gradient = np.zeros(sum(self.sizes), dtype=theano.config.floatX)
 
         result =[np.zeros(i.get_value().shape) for i in self.params]
-        costs = []
+
         for inputs in gradient_dataset.iterate(update=True):
             # Construct the list of gradient ( one matrix for each param )
-            pause()
-            result =[(i+j)/ gradient_dataset.number_batches for i, j in zip(result, self.grad_cost_fn(inputs))]
+            #pause()
+            result =[(i+j)/ gradient_dataset.number_batches for i, j in zip(result, self.grad_cost_fn(inputs[0],inputs[1]))]
             # Flat the result and add it to the gradient (average over batches )
             #gradient += self.list_to_flat(result[:len(self.p)]) / gradient_dataset.number_batches
             # # We have to check if the gradient is always well definite.
@@ -84,7 +89,7 @@ class LSTM(object):
         # Evaluate the cost at this epoch
         mean_cost = 0
         for inputs in  gradient_dataset.iterate(update=True):
-            mean_cost+=self.cost_fn(inputs)
+            mean_cost+=self.cost_fn(inputs[0],inputs[1])
 
         mean_cost/gradient_dataset.number_batches
 
