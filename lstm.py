@@ -40,7 +40,9 @@ class LSTM(object):
 
 
         # cost function we can directly implement it using y_pred ...
-        self.cost = T.mean(T.nnet.binary_crossentropy(self.softmax_layer.p_y_given_x, self.y))
+
+
+        self.cost = T.mean((self.softmax_layer.p_y_given_x - self.y))
         self.grad_cost = T.grad(self.cost, self.params)
         self.cost_fn = theano.function(inputs=[self.x,self.y],outputs=self.cost)
         self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
@@ -49,7 +51,6 @@ class LSTM(object):
         # g = map(T.as_tensor_variable, g)  # for CudaNdarray
         # self.f_gc = theano.function(inputs, g + costs, on_unused_input='ignore')  # during gradient computation
         # Update law in a form, misses the x*grad part !!!
-
 
 
         # Implement the batching :
@@ -318,7 +319,7 @@ if __name__ == '__main__':
     n_updates = 10
     n_classes = 7
     # Store the raw classes anyway
-    labels = trY
+    #labels = trY
     # Compute probabilistic labelling :
     trY = [int_to_label(i,n_classes) for i in trY]
     gradient_dataset = SequenceDataset([trX, trY], batch_size=None,
