@@ -12,15 +12,13 @@ def int_to_label(y, n_classes):
         result[idx][int(i)] = 1
     return result
 
+
 class LSTM(object):
 
     def __init__(self,n_in,n_layers,n_hidden,n_classes):
         print "LSTM"
 
-        # Initialize all the layers and the links between layers
-        # First create a single layer example
-        # Declare all the attributes :
-        self.lr = 100000
+        self.lr = 0.0001
         self.momentum = 0.9
         self.x = T.matrix()
         self.y = T.ivector()
@@ -29,46 +27,34 @@ class LSTM(object):
         self.n_hidden = n_hidden
         self.n_classes = n_classes
 
-        # Define one layer of LSTM and one layer of softmax
-        # Maybe we could add a feedforward layer later
-
+        # Init a Single LSTM Layer
         self.lstm_layer = LSTM_layer(self.x,n_in,n_hidden)
+
+        # Init a Softmax Layer for Output
         self.softmax_layer = Softmax_layer(self.lstm_layer.h,n_hidden,n_classes)
+
+        # Declare parameters
         self.params = [self.lstm_layer.W_i,self.lstm_layer.W_c,self.lstm_layer.W_f,self.lstm_layer.W_o,self.lstm_layer.U_i
                        ,self.lstm_layer.U_f,self.lstm_layer.U_c,self.lstm_layer.V_o,self.lstm_layer.bi,self.lstm_layer.bf,
                        self.lstm_layer.bc,self.lstm_layer.bo,self.lstm_layer.h0]
 
-
-        # cost function we can directly implement it using y_pred ...
-        # Testing functions  :
-
-
-        ###
         self.cost = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
         self.grad_cost = T.grad(self.cost, self.params)
         self.cost_fn = theano.function(inputs=[self.x,self.y],outputs=self.cost)
         self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
 
-        # g = T.grad(costs[0], p)
-        # g = map(T.as_tensor_variable, g)  # for CudaNdarray
-        # self.f_gc = theano.function(inputs, g + costs, on_unused_input='ignore')  # during gradient computation
-        # Update law in a form, misses the x*grad part !!!
-
-
-        # Implement the batching :
     def train(self,gradient_dataset):
         """     
         :param x: Train an example n_steps * m_features
         :param y: n_steps * 1
         :return:
         """
-        #gradient = np.zeros(sum(self.sizes), dtype=theano.config.floatX)
 
         result =[np.zeros(i.get_value().shape) for i in self.params]
 
         for inputs in gradient_dataset.iterate(update=True):
-            # Construct the list of gradient ( one matrix for each param )
-            #pause()
+
+            # Construct the list of gradients ( one matrix for each param )
             result =[(i+j)/ gradient_dataset.number_batches for i, j in zip(result, self.grad_cost_fn(inputs[0],inputs[1]))]
             # Flat the result and add it to the gradient (average over batches )
             #gradient += self.list_to_flat(result[:len(self.p)]) / gradient_dataset.number_batches
@@ -88,11 +74,11 @@ class LSTM(object):
 
         mean_cost = mean_cost/gradient_dataset.number_batches
 
-        print " Cost : "+str(mean_cost)
-
+        print " Cost : " + str(mean_cost)
 
     def list_to_flat(self, l):
         return np.concatenate([i.flatten() for i in l])
+
 
 class Softmax_layer(object):
 
@@ -113,8 +99,6 @@ class Softmax_layer(object):
 
         self.p_y_given_x = symbolic_softmax(T.dot(self.xt,self.W_soft))
         self.y_pred = T.argmax(self.p_y_given_x, axis=-1)
-
-# This object is a memory cell
 
 
 class LSTM_layer(object):
