@@ -31,38 +31,44 @@ def int_to_label(y, n_classes):
 
 class LSTM(object):
 
-    def __init__(self,n_in,n_layers,n_hidden,n_classes):
-        print "LSTM"
+    def __init__(self, n_in, n_layers, n_hidden, n_classes):
+        print "Initialize LSTM network..."
 
         self.lr =0.001
         self.momentum = 0.9
-        self.x = T.matrix()
-        self.y = T.ivector()
+        self.x = T.matrix()         # network input
+        self.y = T.ivector()        # target labels (multiclass integer format)
         # Size parameters
-        self.n_in = n_in
-        self.n_hidden = n_hidden
-        self.n_classes = n_classes
+        self.n_in = n_in            # input dimensionality
+        self.n_hidden = n_hidden    # number of hidden units
+        self.n_classes = n_classes  # number of output classes (softmax layer size)
 
         # Init a Single LSTM Layer
-        self.lstm_layer = LSTM_layer(self.x,n_in,n_hidden)
+        self.lstm_layer = LSTM_layer(self.x, n_in, n_hidden)
 
         # Init a Softmax Layer for Output
-        self.softmax_layer = Softmax_layer(self.lstm_layer.h,n_hidden,n_classes)
 
-        # Declare parameters
-        self.params = [self.lstm_layer.W_i,self.lstm_layer.W_c,self.lstm_layer.W_f,self.lstm_layer.W_o,self.lstm_layer.U_i
-                       ,self.lstm_layer.U_f,self.lstm_layer.U_c,self.lstm_layer.V_o,self.lstm_layer.bi,self.lstm_layer.bf,
-                       self.lstm_layer.bc,self.lstm_layer.bo,self.lstm_layer.h0]
+    
 
-        self.cost_2 = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
-        self.cost = self.nll_multiclass(self.y)
-        self.grad_cost = T.grad(self.cost, self.params)
-        self.cost_fn = theano.function(inputs=[self.x,self.y],outputs=self.cost)
-        self.cost_fn_2 = theano.function(inputs=[self.x,self.y],outputs=self.cost_2)
-        self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
-        self.predict_fn = theano.function(inputs=[self.x],outputs=self.softmax_layer.y_pred)
+        self.softmax_layer = Softmax_layer(self.lstm_layer.h, n_hidden, n_classes)
 
-    def train(self,gradient_dataset,epoch):
+        # Declare parameters for LSTM network
+        self.params = [self.lstm_layer.W_i, self.lstm_layer.W_c, self.lstm_layer.W_f, self.lstm_layer.W_o, self.lstm_layer.U_i,
+                       self.lstm_layer.U_f, self.lstm_layer.U_c, self.lstm_layer.V_o, self.lstm_layer.bi, self.lstm_layer.bf,
+                       self.lstm_layer.bc, self.lstm_layer.bo, self.lstm_layer.h0]
+
+        self.cross_entropy_cost = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
+        self.nll_cost = self.nll_multiclass(self.y)
+        self.grad_cost = T.grad(self.nll_cost, self.params)
+        self.nll_cost_fn = theano.function(inputs=[self.x, self.y], outputs=self.nll_cost)
+        self.cross_entropy_cost_fn = theano.function(inputs=[self.x, self.y], outputs=self.cross_entropy_cost)
+        self.grad_cost_fn =theano.function(inputs=[self.x, self.y], outputs= self.grad_cost)
+        self.predict_fn = theano.function(inputs=[self.x], outputs=self.softmax_layer.y_pred)
+
+        print "Initialization of LSTM network done!"
+
+    def train(self, gradient_dataset,epoch):
+
         """     
         :param x: Train an example n_steps * m_features
         :param y: n_steps * 1
@@ -86,17 +92,16 @@ class LSTM(object):
                 print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))+" "+str(np.mean(i.get_value()))
 
         # Evaluate the cost at this epoch
-        mean_cost = 0
-        mean_cost_2  = 0
+        mean_cross_entropy_cost = 0
+        mean_nll_cost  = 0
         for inputs in  gradient_dataset.iterate(update=True):
-            mean_cost+=self.cost_fn(inputs[0],inputs[1])
-            mean_cost_2+=self.cost_fn_2(inputs[0],inputs[1])
+            mean_cross_entropy_cost += self.cross_entropy_cost_fn(inputs[0],inputs[1])
+            mean_nll_cost += self.nll_cost_fn(inputs[0],inputs[1])
 
+        mean_cross_entropy_cost = mean_cross_entropy_cost/gradient_dataset.number_batches
+        mean_nll_cost = mean_nll_cost/gradient_dataset.number_batches
 
-        mean_cost_2 = mean_cost_2/gradient_dataset.number_batches
-        mean_cost = mean_cost/gradient_dataset.number_batches
-
-        print " Cost : "+str(mean_cost)+" "+str(mean_cost_2)
+        print " Cost : "+str(mean_cross_entropy_cost)+" "+str(mean_nll_cost)
 
     def predict(self,X):
         return self.predict_fn(X)
@@ -105,6 +110,7 @@ class LSTM(object):
         plt.close()
         plt.imshow(np.abs(self.params[idx].get_value()),cmap=plt.get_cmap('gray'))
         plt.show()
+
     def nll_multiclass(self, y):
         # negative log likelihood based on multiclass cross entropy error
         # y.shape[0] is (symbolically) the number of rows in y, i.e.,
@@ -146,8 +152,8 @@ class Softmax_layer(object):
 
 class LSTM_layer(object):
 
-    def __init__(self,x,n_input, n_hidden):
-        print "Init LSTM"
+    def __init__(self, x, n_input, n_hidden):
+        print "Initialize LSTM layer..."
         # n_candidate = n_output
         # Init weights :
         init_norm = 0.01
@@ -179,10 +185,6 @@ class LSTM_layer(object):
         self.W_o = theano.shared(value=W_o_init,name='W_o')
 
 
-
-        # State weights  :
-    
-
         # Input state weights :
         U_i_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
                                           low=-init_norm, high=init_norm),
@@ -198,7 +200,6 @@ class LSTM_layer(object):
         self.U_f = theano.shared(value=U_f_init,name='U_f')
 
         # Candidates state weights :
-
         U_c_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
                                   low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
@@ -206,13 +207,10 @@ class LSTM_layer(object):
         
                 
         # Output state weights :
-
         U_o_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
                                   low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.U_o = theano.shared(value=U_o_init,name='U_o')
-        
-        
 
         # Output candidate weights
         V_o_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
@@ -272,6 +270,8 @@ class LSTM_layer(object):
         # Ct = it* Ctest +ft*Ct-1
         # ot = sigma(Woxt + Uo*ht-1 + VoCt +bo)
         # ht = ot * tanh(Ct)
+
+        print "Initialization of LSTM layer done!"
 
     def step(self,xt,ht_pre,ct_pre):
         it = T.nnet.sigmoid(T.dot(xt,self.W_i)+T.dot(ht_pre,self.U_i)+self.bi)
