@@ -3,6 +3,7 @@ import theano
 import theano.tensor as T
 from process import process
 from ipdb import set_trace as pause
+from matplotlib import pyplot as plt
 from hf import hf_optimizer
 # This object contains the global network
 def int_to_label(y, n_classes):
@@ -18,7 +19,7 @@ class LSTM(object):
     def __init__(self,n_in,n_layers,n_hidden,n_classes):
         print "LSTM"
 
-        self.lr = 0.01
+        self.lr =0.1
         self.momentum = 0.9
         self.x = T.matrix()
         self.y = T.ivector()
@@ -63,6 +64,11 @@ class LSTM(object):
         updates = [i.get_value()-self.lr*j for i,j in zip(self.params,result)]
         for i in range(len(self.params)):
             self.params[i].set_value(updates[i])
+            #self.params[i].set_value(self.params[i].get_value()+10)
+
+
+        for i in self.params:
+            print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))+" "+str(np.mean(i.get_value()))
 
         # Evaluate the cost at this epoch
         mean_cost = 0
@@ -80,7 +86,10 @@ class LSTM(object):
     def predict(self,X):
         return self.predict_fn(X)
 
-
+    def plot_param(self,idx):
+        plt.close()
+        plt.imshow(np.abs(self.params[idx].get_value()),cmap=plt.get_cmap('gray'))
+        plt.show()
     def nll_multiclass(self, y):
         # negative log likelihood based on multiclass cross entropy error
         # y.shape[0] is (symbolically) the number of rows in y, i.e.,
@@ -126,7 +135,7 @@ class LSTM_layer(object):
         print "Init LSTM"
         # n_candidate = n_output
         # Init weights :
-        init_norm = 0.1
+        init_norm = 0.01
         # Input weights :
         W_i_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
                                           low=-init_norm, high=init_norm),
