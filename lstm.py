@@ -18,7 +18,7 @@ class LSTM(object):
     def __init__(self,n_in,n_layers,n_hidden,n_classes):
         print "LSTM"
 
-        self.lr = 0.001
+        self.lr = 0.01
         self.momentum = 0.9
         self.x = T.matrix()
         self.y = T.ivector()
@@ -43,6 +43,7 @@ class LSTM(object):
         self.grad_cost = T.grad(self.cost, self.params)
         self.cost_fn = theano.function(inputs=[self.x,self.y],outputs=self.cost)
         self.cost_fn_2 = theano.function(inputs=[self.x,self.y],outputs=self.cost_2)
+        self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
         self.predict_fn = theano.function(inputs=[self.x],outputs=self.softmax_layer.y_pred)
 
     def train(self,gradient_dataset):
@@ -125,7 +126,7 @@ class LSTM_layer(object):
         print "Init LSTM"
         # n_candidate = n_output
         # Init weights :
-        init_norm = 1
+        init_norm = 0.1
         # Input weights :
         W_i_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
                                           low=-init_norm, high=init_norm),
