@@ -23,7 +23,7 @@ class LSTM(object):
         # Initialize all the layers and the links between layers
         # First create a single layer example
         # Declare all the attributes :
-        self.lr = 0.001
+        self.lr = 0.01
         self.momentum = 0.9
         self.x = T.matrix()
         self.y = T.ivector()
@@ -146,7 +146,7 @@ class LSTM_layer(object):
         print "Init LSTM"
         # n_candidate = n_output
         # Init weights :
-        init_norm = 1
+        init_norm = 0.1
         # Input weights :
         W_i_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
                                           low=-init_norm, high=init_norm),
