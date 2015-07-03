@@ -3,7 +3,7 @@ import theano
 import theano.tensor as T
 from process import process
 from ipdb import set_trace as pause
-
+from hf import hf_optimizer
 # This object contains the global network
 def int_to_label(y, n_classes):
 
@@ -18,7 +18,7 @@ class LSTM(object):
     def __init__(self,n_in,n_layers,n_hidden,n_classes):
         print "LSTM"
 
-        self.lr = 0.0001
+        self.lr = 0.001
         self.momentum = 0.9
         self.x = T.matrix()
         self.y = T.ivector()
@@ -38,10 +38,12 @@ class LSTM(object):
                        ,self.lstm_layer.U_f,self.lstm_layer.U_c,self.lstm_layer.V_o,self.lstm_layer.bi,self.lstm_layer.bf,
                        self.lstm_layer.bc,self.lstm_layer.bo,self.lstm_layer.h0]
 
-        self.cost = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
+        self.cost_2 = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
+        self.cost = self.nll_multiclass(self.y)
         self.grad_cost = T.grad(self.cost, self.params)
         self.cost_fn = theano.function(inputs=[self.x,self.y],outputs=self.cost)
-        self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
+        self.cost_fn_2 = theano.function(inputs=[self.x,self.y],outputs=self.cost_2)
+        self.predict_fn = theano.function(inputs=[self.x],outputs=self.softmax_layer.y_pred)
 
     def train(self,gradient_dataset):
         """     
@@ -51,30 +53,46 @@ class LSTM(object):
         """
 
         result =[np.zeros(i.get_value().shape) for i in self.params]
-
         for inputs in gradient_dataset.iterate(update=True):
+            result =[i+j for i, j in zip(result, self.grad_cost_fn(inputs[0],inputs[1]))]
 
-            # Construct the list of gradients ( one matrix for each param )
-            result =[(i+j)/ gradient_dataset.number_batches for i, j in zip(result, self.grad_cost_fn(inputs[0],inputs[1]))]
-            # Flat the result and add it to the gradient (average over batches )
-            #gradient += self.list_to_flat(result[:len(self.p)]) / gradient_dataset.number_batches
-            # # We have to check if the gradient is always well definite.
-            # Add the cost and the error in the costs
+        result = [i/float(gradient_dataset.number_batches) for i in result]
 
-            # Update all the parameters :
-        # Update the parameters :
+        # Update all parameters
         updates = [i.get_value()-self.lr*j for i,j in zip(self.params,result)]
         for i in range(len(self.params)):
             self.params[i].set_value(updates[i])
 
         # Evaluate the cost at this epoch
         mean_cost = 0
+        mean_cost_2  = 0
         for inputs in  gradient_dataset.iterate(update=True):
             mean_cost+=self.cost_fn(inputs[0],inputs[1])
+            mean_cost_2+=self.cost_fn_2(inputs[0],inputs[1])
 
+
+        mean_cost_2 = mean_cost_2/gradient_dataset.number_batches
         mean_cost = mean_cost/gradient_dataset.number_batches
 
-        print " Cost : " + str(mean_cost)
+        print " Cost : "+str(mean_cost)+" "+str(mean_cost_2)
+
+    def predict(self,X):
+        return self.predict_fn(X)
+
+
+    def nll_multiclass(self, y):
+        # negative log likelihood based on multiclass cross entropy error
+        # y.shape[0] is (symbolically) the number of rows in y, i.e.,
+        # number of time steps (call it T) in the sequence
+        # T.arange(y.shape[0]) is a symbolic vector which will contain
+        # [0,1,2,... n-1] T.log(self.p_y_given_x) is a matrix of
+        # Log-Probabilities (call it LP) with one row per example and
+        # one column per class LP[T.arange(y.shape[0]),y] is a vector
+        # v containing [LP[0,y[0]], LP[1,y[1]], LP[2,y[2]], ...,
+        # LP[n-1,y[n-1]]] and T.mean(LP[T.arange(y.shape[0]),y]) is
+        # the mean (across minibatch examples) of the elements in v,
+        # i.e., the mean log-likelihood across the minibatch.
+        return -T.mean(T.log(self.softmax_layer.p_y_given_x)[T.arange(y.shape[0]), y])
 
     def list_to_flat(self, l):
         return np.concatenate([i.flatten() for i in l])
@@ -96,8 +114,8 @@ class Softmax_layer(object):
         def symbolic_softmax(x):
                 e = T.exp(x)
                 return e / T.sum(e, axis=1).dimshuffle(0, 'x')
-
-        self.p_y_given_x = symbolic_softmax(T.dot(self.xt,self.W_soft))
+        self.y_out = T.dot(self.xt,self.W_soft)
+        self.p_y_given_x = symbolic_softmax(self.y_out)
         self.y_pred = T.argmax(self.p_y_given_x, axis=-1)
 
 
@@ -107,10 +125,10 @@ class LSTM_layer(object):
         print "Init LSTM"
         # n_candidate = n_output
         # Init weights :
-
+        init_norm = 1
         # Input weights :
         W_i_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
-                                          low=-.01, high=.01),
+                                          low=-init_norm, high=init_norm),
                                           dtype=theano.config.floatX)
 
         self.W_i = theano.shared(value=W_i_init,name='W_i')
@@ -118,20 +136,20 @@ class LSTM_layer(object):
         # Forget weights  :
 
         W_f_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
-                                  low=-.01, high=.01),
+                                  low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.W_f = theano.shared(value=W_f_init,name='W_f')
 
         # Candidate weights :
 
         W_c_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
-                                  low=-.01, high=.01),
+                                  low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.W_c = theano.shared(value=W_c_init,name='W_c')
 
         # Output weights
         W_o_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
-                                  low=-.01, high=.01),
+                                  low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.W_o = theano.shared(value=W_o_init,name='W_o')
 
@@ -142,7 +160,7 @@ class LSTM_layer(object):
 
         # Input state weights :
         U_i_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                          low=-.01, high=.01),
+                                          low=-init_norm, high=init_norm),
                                           dtype=theano.config.floatX)
 
         self.U_i = theano.shared(value=U_i_init,name='U_i')
@@ -150,7 +168,7 @@ class LSTM_layer(object):
         # Forget state weights  :
 
         U_f_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                  low=-.01, high=.01),
+                                  low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.U_f = theano.shared(value=U_f_init,name='U_f')
         
@@ -158,7 +176,7 @@ class LSTM_layer(object):
         # Candidates state weights :
 
         U_c_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                  low=-.01, high=.01),
+                                  low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.U_c = theano.shared(value=U_c_init,name='U_c')
         
@@ -166,7 +184,7 @@ class LSTM_layer(object):
         # Output state weights :
 
         U_o_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                  low=-.01, high=.01),
+                                  low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.U_o = theano.shared(value=U_o_init,name='U_o')
         
@@ -174,11 +192,9 @@ class LSTM_layer(object):
 
         # Output candidate weights
         V_o_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                  low=-.01, high=.01),
+                                  low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.V_o = theano.shared(value=V_o_init,name='V_o')
-
-
 
         # Init hidden state vector :
 
@@ -300,21 +316,33 @@ if __name__ == '__main__':
     trX, trY = process()
 
     n_in = trX[0].shape[1]
-    n_hidden = 20
+    n_hidden = 40
     n_layers = 1
-    n_updates = 100
+    n_updates = 100000
     n_classes = 7
     # Store the raw classes anyway
     #labels = trY
     # Compute probabilistic labelling :
     #trY = [int_to_label(i,n_classes) for i in trY]
+
+
+    # Try a toy example :
+
     gradient_dataset = SequenceDataset([trX, trY], batch_size=None,
                                        number_batches=len(trX))
 
-
+    cg_dataset = SequenceDataset([trX, trY], batch_size=None,
+                                       number_batches=len(trX) )
     model = LSTM(n_in,n_layers,n_hidden,n_classes)
 
-
+    # Use hessian free optimization :
+    # opt = hf_optimizer(p=model.params,inputs=[model.x,model.y],s=model.softmax_layer.y_out,h=model.lstm_layer.h,
+    #                    model=model,costs=[model.cost,model.cost],
+    #                    teX=trX,teY=trY)
+    #
+    # opt.train(gradient_dataset,cg_dataset,num_updates=n_updates)
+    # pause()
+    # Train using gradient descent
     for i in range(n_updates):
         model.train(gradient_dataset)
 
