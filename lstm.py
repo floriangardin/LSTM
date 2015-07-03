@@ -5,7 +5,22 @@ from process import process
 from ipdb import set_trace as pause
 from matplotlib import pyplot as plt
 from hf import hf_optimizer
+from sklearn.metrics import classification_report as report
+from sklearn.metrics import confusion_matrix
+from operator import itemgetter
 # This object contains the global network
+
+
+
+# given an iterable of pairs return the key corresponding to the greatest value
+def argmax(pairs):
+    return max(pairs, key=itemgetter(1))[0]
+
+# given an iterable of values return the index of the greatest value
+def argmax_index(values):
+    return argmax(enumerate(values))
+
+
 def int_to_label(y, n_classes):
 
     result = np.zeros((y.shape[0], n_classes))
@@ -19,7 +34,7 @@ class LSTM(object):
     def __init__(self,n_in,n_layers,n_hidden,n_classes):
         print "LSTM"
 
-        self.lr =0.1
+        self.lr =0.001
         self.momentum = 0.9
         self.x = T.matrix()
         self.y = T.ivector()
@@ -47,7 +62,7 @@ class LSTM(object):
         self.grad_cost_fn =theano.function(inputs=[self.x,self.y],outputs= self.grad_cost)
         self.predict_fn = theano.function(inputs=[self.x],outputs=self.softmax_layer.y_pred)
 
-    def train(self,gradient_dataset):
+    def train(self,gradient_dataset,epoch):
         """     
         :param x: Train an example n_steps * m_features
         :param y: n_steps * 1
@@ -66,9 +81,9 @@ class LSTM(object):
             self.params[i].set_value(updates[i])
             #self.params[i].set_value(self.params[i].get_value()+10)
 
-
-        for i in self.params:
-            print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))+" "+str(np.mean(i.get_value()))
+        if(epoch%100 == 0):
+            for i in self.params:
+                print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))+" "+str(np.mean(i.get_value()))
 
         # Evaluate the cost at this epoch
         mean_cost = 0
@@ -181,8 +196,7 @@ class LSTM_layer(object):
                                   low=-init_norm, high=init_norm),
                                   dtype=theano.config.floatX)
         self.U_f = theano.shared(value=U_f_init,name='U_f')
-        
-        
+
         # Candidates state weights :
 
         U_c_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
@@ -324,9 +338,10 @@ class SequenceDataset:
 if __name__ == '__main__':
 
     trX, trY = process()
-
+    teX = trX
+    teY = trY
     n_in = trX[0].shape[1]
-    n_hidden = 40
+    n_hidden = 1
     n_layers = 1
     n_updates = 100000
     n_classes = 7
@@ -337,26 +352,63 @@ if __name__ == '__main__':
 
 
     # Try a toy example :
-
+    batch_number = len(trX)
     gradient_dataset = SequenceDataset([trX, trY], batch_size=None,
-                                       number_batches=len(trX))
+                                       number_batches=batch_number)
 
     cg_dataset = SequenceDataset([trX, trY], batch_size=None,
-                                       number_batches=len(trX) )
+                                       number_batches=batch_number)
     model = LSTM(n_in,n_layers,n_hidden,n_classes)
 
-    # Use hessian free optimization :
-    # opt = hf_optimizer(p=model.params,inputs=[model.x,model.y],s=model.softmax_layer.y_out,h=model.lstm_layer.h,
-    #                    model=model,costs=[model.cost,model.cost],
-    #                    teX=trX,teY=trY)
-    #
-    # opt.train(gradient_dataset,cg_dataset,num_updates=n_updates)
-    # pause()
-    # Train using gradient descent
+    #Use hessian free optimization :
+    opt = hf_optimizer(p=model.params,inputs=[model.x,model.y],s=model.softmax_layer.y_out,h=model.lstm_layer.h,
+                       model=model,costs=[model.cost,model.cost],
+                       teX=trX,teY=trY)
+
+    opt.train(gradient_dataset,cg_dataset,num_updates=n_updates)
+    pause()
+    #Train using gradient descent
     for i in range(n_updates):
-        model.train(gradient_dataset)
+        model.train(gradient_dataset,i)
 
 
 
+
+    pause()
+    ### EVALUTATION OF NETWORK ###
+    pred_list =[]
+    labels = []
+    target_names = ['Anger','Boredom','Disgust', 'Fear', 'Happiness', 'Sadness', 'Neutral']
+    classes = range(7)
+    for idx,i in enumerate(trX):
+    # Do the prediction for each frame
+        prediction = list(model.predict(i))
+        # Calculate predominant class
+        pred_list.append(argmax_index([prediction.count(j) for j in range(n_classes)]))
+        labels.append(trY[idx][0])
+    # Classification report :
+    print report(labels,pred_list,target_names=target_names)
+    #compute accuracy :
+    print "Accuracy : "+str(np.mean(np.asarray(labels) == np.asarray(pred_list)))
+    pred_list = []
+    labels = []
+    for idx,i in enumerate(teX):
+        # Do the prediction for each frame
+        prediction = list(model.predict(i))
+        # Calculate predominant class
+        pred_list.append(argmax_index([prediction.count(j) for j in range(n_classes)]))
+        labels.append(teY[idx][0])
+
+    # Classification report :
+    print report(labels,pred_list, target_names=target_names)
+    #compute accuracy :
+    print "Accuracy : "+str(np.mean(np.asarray(labels) == np.asarray(pred_list)))
+    pause()
+    # Compute confusion matrix
+    confusion_matrix(np.asarray(labels), np.asarray(pred_list),labels=target_names)
+    # plot all the weights , all the biases,
+    #plt.imshow(arr, cmap = cm.Greys_r)
+    #plt.show()
+    pause()
 
 
