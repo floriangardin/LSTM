@@ -77,7 +77,7 @@ def process():
     n_filter = 40
     min_freq = 130
     max_freq = 6800
-    n_fft = 1024
+    n_fft = 512
     fbank = None
 
     for file_name in os.listdir(file_paths):

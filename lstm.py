@@ -8,9 +8,27 @@ from hf import hf_optimizer
 from sklearn.metrics import classification_report as report
 from sklearn.metrics import confusion_matrix
 from operator import itemgetter
+from theano import config
 # This object contains the global network
 
+# RMS prop implementation :
+def RMSprop(grads, params, rho=0.9, epsilon=1e-6):
 
+    updates = []
+    for p, g in zip(params, grads):
+        acc = p.get_value() * 0.
+        acc_new = rho * acc + (1 - rho) * g ** 2
+        gradient_scaling = np.sqrt(acc_new + epsilon)
+        g = g / gradient_scaling
+        #updates.append((acc, acc_new))
+        updates.append(g)
+    return updates
+
+# initialize with orthogonal weights :
+def ortho_weight(ndim):
+    W = np.random.randn(ndim, ndim)
+    u, s, v = np.linalg.svd(W)
+    return 0.1*u.astype(config.floatX)
 
 # given an iterable of pairs return the key corresponding to the greatest value
 def argmax(pairs):
@@ -34,7 +52,7 @@ class LSTM(object):
     def __init__(self, n_in, n_layers, n_hidden, n_classes):
         print "Initialize LSTM network..."
 
-        self.lr =0.001
+        self.lr = 0.1
         self.momentum = 0.9
         self.x = T.matrix()         # network input
         self.y = T.ivector()        # target labels (multiclass integer format)
@@ -42,13 +60,10 @@ class LSTM(object):
         self.n_in = n_in            # input dimensionality
         self.n_hidden = n_hidden    # number of hidden units
         self.n_classes = n_classes  # number of output classes (softmax layer size)
-
         # Init a Single LSTM Layer
         self.lstm_layer = LSTM_layer(self.x, n_in, n_hidden)
 
         # Init a Softmax Layer for Output
-
-    
 
         self.softmax_layer = Softmax_layer(self.lstm_layer.h, n_hidden, n_classes)
 
@@ -57,6 +72,7 @@ class LSTM(object):
                        self.lstm_layer.U_f, self.lstm_layer.U_c, self.lstm_layer.V_o, self.lstm_layer.bi, self.lstm_layer.bf,
                        self.lstm_layer.bc, self.lstm_layer.bo, self.lstm_layer.h0]
 
+        self.updates_pre = [np.zeros(i.get_value().shape) for i in self.params]
         self.cross_entropy_cost = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
         self.nll_cost = self.nll_multiclass(self.y)
         self.grad_cost = T.grad(self.nll_cost, self.params)
@@ -82,10 +98,11 @@ class LSTM(object):
         result = [i/float(gradient_dataset.number_batches) for i in result]
 
         # Update all parameters
+        result = RMSprop(result,self.params)
         updates = [i.get_value()-self.lr*j for i,j in zip(self.params,result)]
         for i in range(len(self.params)):
             self.params[i].set_value(updates[i])
-            #self.params[i].set_value(self.params[i].get_value()+10)
+
 
         if(epoch%100 == 0):
             for i in self.params:
@@ -100,7 +117,7 @@ class LSTM(object):
 
         mean_cross_entropy_cost = mean_cross_entropy_cost/gradient_dataset.number_batches
         mean_nll_cost = mean_nll_cost/gradient_dataset.number_batches
-
+        self.updates_pre = result
         print " Cost : "+str(mean_cross_entropy_cost)+" "+str(mean_nll_cost)
 
     def predict(self,X):
@@ -158,64 +175,71 @@ class LSTM_layer(object):
         # Init weights :
         init_norm = 0.01
         # Input weights :
-        W_i_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
-                                          low=-init_norm, high=init_norm),
-                                          dtype=theano.config.floatX)
+        W_i_init = ortho_weight(n_hidden)
+        # W_i_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
+        #                                   low=-init_norm, high=init_norm),
+        #                                   dtype=theano.config.floatX)
 
         self.W_i = theano.shared(value=W_i_init,name='W_i')
 
         # Forget weights  :
-
-        W_f_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
-                                  low=-init_norm, high=init_norm),
-                                  dtype=theano.config.floatX)
+        W_f_init = ortho_weight(n_hidden)
+        # W_f_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
+        #                           low=-init_norm, high=init_norm),
+        #                           dtype=theano.config.floatX)
         self.W_f = theano.shared(value=W_f_init,name='W_f')
 
         # Candidate weights :
-
-        W_c_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
-                                  low=-init_norm, high=init_norm),
-                                  dtype=theano.config.floatX)
+        W_c_init = ortho_weight(n_hidden)
+        # W_c_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
+        #                           low=-init_norm, high=init_norm),
+        #                           dtype=theano.config.floatX)
         self.W_c = theano.shared(value=W_c_init,name='W_c')
 
         # Output weights
-        W_o_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
-                                  low=-init_norm, high=init_norm),
-                                  dtype=theano.config.floatX)
+        W_o_init = ortho_weight(n_hidden)
+        # W_o_init = np.asarray(np.random.uniform(size=(n_input, n_hidden),
+        #                           low=-init_norm, high=init_norm),
+        #                           dtype=theano.config.floatX)
         self.W_o = theano.shared(value=W_o_init,name='W_o')
 
 
         # Input state weights :
-        U_i_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                          low=-init_norm, high=init_norm),
-                                          dtype=theano.config.floatX)
+        U_i_init = ortho_weight(n_hidden)
+        # U_i_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
+        #                                   low=-init_norm, high=init_norm),
+        #                                   dtype=theano.config.floatX)
 
         self.U_i = theano.shared(value=U_i_init,name='U_i')
 
         # Forget state weights  :
 
-        U_f_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                  low=-init_norm, high=init_norm),
-                                  dtype=theano.config.floatX)
+        U_f_init = ortho_weight(n_hidden)
+        # U_f_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
+        #                           low=-init_norm, high=init_norm),
+        #                           dtype=theano.config.floatX)
         self.U_f = theano.shared(value=U_f_init,name='U_f')
 
         # Candidates state weights :
-        U_c_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                  low=-init_norm, high=init_norm),
-                                  dtype=theano.config.floatX)
+        U_c_init = ortho_weight(n_hidden)
+        # U_c_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
+        #                           low=-init_norm, high=init_norm),
+        #                           dtype=theano.config.floatX)
         self.U_c = theano.shared(value=U_c_init,name='U_c')
         
                 
         # Output state weights :
-        U_o_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                  low=-init_norm, high=init_norm),
-                                  dtype=theano.config.floatX)
+        U_o_init = ortho_weight(n_hidden)
+        # U_o_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
+        #                           low=-init_norm, high=init_norm),
+        #                           dtype=theano.config.floatX)
         self.U_o = theano.shared(value=U_o_init,name='U_o')
 
         # Output candidate weights
-        V_o_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
-                                  low=-init_norm, high=init_norm),
-                                  dtype=theano.config.floatX)
+        V_o_init = ortho_weight(n_hidden)
+        # V_o_init = np.asarray(np.random.uniform(size=(n_hidden, n_hidden),
+        #                           low=-init_norm, high=init_norm),
+        #                           dtype=theano.config.floatX)
         self.V_o = theano.shared(value=V_o_init,name='V_o')
 
         # Init hidden state vector :
@@ -338,13 +362,16 @@ class SequenceDataset:
 if __name__ == '__main__':
 
     trX, trY = process()
-    teX = trX
-    teY = trY
-    n_in = trX[0].shape[1]
-    n_hidden = 1
+
+    #n_in = trX[0].shape[1]
+    n_in = 40
+    n_hidden = 40
     n_layers = 1
     n_updates = 100000
     n_classes = 7
+    # for toy example :
+    n_seq = 10
+    n_files = 10
     # Store the raw classes anyway
     #labels = trY
     # Compute probabilistic labelling :
@@ -352,6 +379,11 @@ if __name__ == '__main__':
 
 
     # Try a toy example :
+    #trX = [np.random.randn(n_seq,n_in) for i in range(n_files)]
+    #trY = [np.random.randn(n_seq)>0 for i in range(n_files)]
+    teX = trX
+    teY = trY
+    #
     batch_number = len(trX)
     gradient_dataset = SequenceDataset([trX, trY], batch_size=None,
                                        number_batches=batch_number)
@@ -360,16 +392,17 @@ if __name__ == '__main__':
                                        number_batches=batch_number)
     model = LSTM(n_in,n_layers,n_hidden,n_classes)
 
-    #Use hessian free optimization :
-    opt = hf_optimizer(p=model.params,inputs=[model.x,model.y],s=model.softmax_layer.y_out,h=model.lstm_layer.h,
-                       model=model,costs=[model.cost,model.cost],
-                       teX=trX,teY=trY)
-
-    opt.train(gradient_dataset,cg_dataset,num_updates=n_updates)
-    pause()
+    # #Use hessian free optimization :
+    # opt = hf_optimizer(p=model.params,inputs=[model.x,model.y],s=model.softmax_layer.y_out,h=model.lstm_layer.h,
+    #                    model=model,costs=[model.cost,model.cost],
+    #                    teX=trX,teY=trY)
+    #
+    # opt.train(gradient_dataset,cg_dataset,num_updates=n_updates)
+    # pause()
     #Train using gradient descent
     for i in range(n_updates):
         model.train(gradient_dataset,i)
+
 
 
 
