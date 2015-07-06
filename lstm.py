@@ -244,7 +244,7 @@ class Softmax_layer(object):
         def symbolic_softmax(x):
                 e = T.exp(x)
                 return e / T.sum(e, axis=1).dimshuffle(0, 'x')
-        self.y_out = T.dot(self.xt,self.W_soft)
+        self.y_out = T.dot(self.xt,self.W_soft)+self.b_soft
         self.p_y_given_x = symbolic_softmax(self.y_out)
         self.y_pred = T.argmax(self.p_y_given_x, axis=-1)
 
