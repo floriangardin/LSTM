@@ -97,22 +97,22 @@ class LSTM(object):
         self.softmax_layer = Softmax_layer(self.lstm_layer.h, n_hidden, n_classes)
 
         # Declare parameters for LSTM network
-        self.params = [self.lstm_layer.W_i, self.lstm_layer.W_c, self.lstm_layer.W_f, self.lstm_layer.W_o, self.lstm_layer.U_i,
+        self.params = [self.softmax_layer.W_soft,self.softmax_layer.b_soft,self.lstm_layer.W_i, self.lstm_layer.W_c, self.lstm_layer.W_f, self.lstm_layer.W_o, self.lstm_layer.U_i,
                        self.lstm_layer.U_f, self.lstm_layer.U_c, self.lstm_layer.V_o, self.lstm_layer.bi, self.lstm_layer.bf,
-                       self.lstm_layer.bc, self.lstm_layer.bo, self.lstm_layer.h0,self.lstm_layer.c0]
+                       self.lstm_layer.bc, self.lstm_layer.bo, self.lstm_layer.h0, self.lstm_layer.c0]
 
         if(load and os.path.exists('data/network.pkl')):
             print "load params!"
             self.load_params('data/network.pkl')
+            print self.params[0].get_value()==self.lstm_layer.W_i.get_value()
         self.updates_pre = [np.zeros(i.get_value().shape) for i in self.params]
         self.cross_entropy_cost = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
         #self.nll_cost = self.nll_multiclass(self.y)
         self.grad_cost = T.grad(self.cross_entropy_cost, self.params)
         #self.nll_cost_fn = theano.function(inputs=[self.x, self.y], outputs=self.nll_cost)
         self.cross_entropy_cost_fn = theano.function(inputs=[self.x, self.y], outputs=self.cross_entropy_cost)
-        self.grad_cost_fn =theano.function(inputs=[self.x, self.y], outputs= self.grad_cost)
+        self.grad_cost_fn = theano.function(inputs=[self.x, self.y], outputs=self.grad_cost)
         self.predict_fn = theano.function(inputs=[self.x], outputs=self.softmax_layer.y_pred)
-
 
         print "Initialization of LSTM network done!"
 
