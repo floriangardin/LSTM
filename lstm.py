@@ -13,6 +13,19 @@ import joblib
 import os
 # This object contains the global network
 
+def BFGS(grads,params, Bkinv, ):
+    """
+    Implementation of BFGS algorithm
+    :param grads:
+    :param params:
+    :return:
+    """
+    # Get direction : pk = -Bkinv*gradF
+    # Line search (greedy, take the best from N=10 iteration .. )
+    # set sk
+    # set yk
+    # set Bk+1inv
+    return None
 # RMS prop implementation :
 def RMSprop(grads, params, rho=0.9, epsilon=1e-6):
 
@@ -68,7 +81,7 @@ class LSTM(object):
         else:
             raise NotImplementedError
 
-        self.lr = 0.001
+        self.lr = 0.01
         self.momentum = 0.9
         self.x = T.matrix()         # network input
         self.y = T.ivector()        # target labels (multiclass integer format)
@@ -86,7 +99,7 @@ class LSTM(object):
         # Declare parameters for LSTM network
         self.params = [self.lstm_layer.W_i, self.lstm_layer.W_c, self.lstm_layer.W_f, self.lstm_layer.W_o, self.lstm_layer.U_i,
                        self.lstm_layer.U_f, self.lstm_layer.U_c, self.lstm_layer.V_o, self.lstm_layer.bi, self.lstm_layer.bf,
-                       self.lstm_layer.bc, self.lstm_layer.bo, self.lstm_layer.h0]
+                       self.lstm_layer.bc, self.lstm_layer.bo, self.lstm_layer.h0,self.lstm_layer.c0]
 
         if(load and os.path.exists('data/network.pkl')):
             print "load params!"
@@ -99,6 +112,7 @@ class LSTM(object):
         self.cross_entropy_cost_fn = theano.function(inputs=[self.x, self.y], outputs=self.cross_entropy_cost)
         self.grad_cost_fn =theano.function(inputs=[self.x, self.y], outputs= self.grad_cost)
         self.predict_fn = theano.function(inputs=[self.x], outputs=self.softmax_layer.y_pred)
+
 
         print "Initialization of LSTM network done!"
 
@@ -117,8 +131,19 @@ class LSTM(object):
         :return:
         """
         params = joblib.load(path)
+        pause()
         for idx,param in enumerate(params):
             self.params[idx].set_value(param)
+        for idx,i in enumerate(params):
+            print str(self.params[idx])+" "+str(np.max(i))+ " "+str(np.min(i))\
+              +" "+str(np.mean(i))+" "+str(np.mean(np.abs(i)))
+        print ""
+        for i in self.params:
+            print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))\
+              +" "+str(np.mean(i.get_value()))+" "+str(np.mean(np.abs(i.get_value())))
+
+
+        # Evaluate the cost after the load
 
     def train(self, gradient_dataset,whole_train_dataset,epoch):
 
@@ -127,7 +152,24 @@ class LSTM(object):
         :param y: n_steps * 1
         :return:
         """
+        # Print first cost before starting
+        if(epoch==0):
+        # Evaluate the cost at this epoch
+            mean_cross_entropy_cost = 0
+            #mean_nll_cost  = 0
+            for inputs in whole_train_dataset.iterate(update=True):
+                mean_cross_entropy_cost += self.cross_entropy_cost_fn(inputs[0],inputs[1])
+                #mean_nll_cost += self.nll_cost_fn(inputs[0],inputs[1])
 
+            mean_cross_entropy_cost = mean_cross_entropy_cost/whole_train_dataset.number_batches
+            #mean_nll_cost = mean_nll_cost/gradient_dataset.number_batches
+            print "Cost after load : "+str(mean_cross_entropy_cost)
+
+         # Print params info
+        if(epoch%100 == 0):
+            for i in self.params:
+                print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))\
+                      +" "+str(np.mean(i.get_value()))+" "+str(np.mean(np.abs(i.get_value())))
         # This part can be parallelized with theano ....
         # Declare result as a shared variable
         result =[np.zeros(i.get_value().shape) for i in self.params]
@@ -142,15 +184,9 @@ class LSTM(object):
         for i in range(len(self.params)):
             self.params[i].set_value(updates[i])
 
-        # Print params info
-        if(epoch%100 == 0):
-            for i in self.params:
-                print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))\
-                      +" "+str(np.mean(i.get_value()))+" "+str(np.mean(np.abs(i.get_value())))
+
         # Save current state of network
-        if(epoch%10 == 0 and not epoch==0):
-            print "Save!"
-            self.save_params()
+
         # Evaluate the cost at this epoch
         mean_cross_entropy_cost = 0
         #mean_nll_cost  = 0
@@ -162,6 +198,12 @@ class LSTM(object):
         #mean_nll_cost = mean_nll_cost/gradient_dataset.number_batches
         self.updates_pre = result
         print "Epoch "+str(epoch) + " Cost : "+str(mean_cross_entropy_cost)
+        if(epoch%10 == 0 and not epoch==0):
+            print "Save!"
+            self.save_params()
+            for i in self.params:
+                print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))\
+                      +" "+str(np.mean(i.get_value()))+" "+str(np.mean(np.abs(i.get_value())))
 
     def predict(self,X):
         return self.predict_fn(X)
@@ -294,7 +336,6 @@ class LSTM_layer(object):
         # Init biases :
 
         # forget biases:
-
         bf_init = np.zeros((n_hidden), dtype=theano.config.floatX)
         self.bf = theano.shared(value=bf_init, name='bf')
 
@@ -434,7 +475,7 @@ if __name__ == '__main__':
 
     whole_train_dataset = SequenceDataset([trX, trY], batch_size=None,
                                        number_batches=batch_number)
-    model = LSTM(n_in,n_layers,n_hidden,n_classes,load=False,activation="sigmoid")
+    model = LSTM(n_in,n_layers,n_hidden,n_classes,load=True,activation="sigmoid")
 
     # #Use hessian free optimization :
     # opt = hf_optimizer(p=model.params,inputs=[model.x,model.y],s=model.softmax_layer.y_out,h=model.lstm_layer.h,
