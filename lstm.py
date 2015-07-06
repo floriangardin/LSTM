@@ -101,10 +101,10 @@ class LSTM(object):
                        self.lstm_layer.U_f, self.lstm_layer.U_c, self.lstm_layer.V_o, self.lstm_layer.bi, self.lstm_layer.bf,
                        self.lstm_layer.bc, self.lstm_layer.bo, self.lstm_layer.h0, self.lstm_layer.c0]
 
-        if(load and os.path.exists('data/network.pkl')):
+        if load and os.path.exists('data/network.pkl'):
             print "load params!"
             self.load_params('data/network.pkl')
-            print self.params[0].get_value()==self.lstm_layer.W_i.get_value()
+
         self.updates_pre = [np.zeros(i.get_value().shape) for i in self.params]
         self.cross_entropy_cost = T.mean(T.nnet.categorical_crossentropy(self.softmax_layer.p_y_given_x, self.y))
         #self.nll_cost = self.nll_multiclass(self.y)
@@ -131,9 +131,9 @@ class LSTM(object):
         :return:
         """
         params = joblib.load(path)
-        pause()
         for idx,param in enumerate(params):
             self.params[idx].set_value(param)
+
         for idx,i in enumerate(params):
             print str(self.params[idx])+" "+str(np.max(i))+ " "+str(np.min(i))\
               +" "+str(np.mean(i))+" "+str(np.mean(np.abs(i)))
@@ -141,9 +141,6 @@ class LSTM(object):
         for i in self.params:
             print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))\
               +" "+str(np.mean(i.get_value()))+" "+str(np.mean(np.abs(i.get_value())))
-
-
-        # Evaluate the cost after the load
 
     def train(self, gradient_dataset,whole_train_dataset,epoch):
 
@@ -153,7 +150,7 @@ class LSTM(object):
         :return:
         """
         # Print first cost before starting
-        if(epoch==0):
+        if epoch == 0:
         # Evaluate the cost at this epoch
             mean_cross_entropy_cost = 0
             #mean_nll_cost  = 0
@@ -166,7 +163,7 @@ class LSTM(object):
             print "Cost after load : "+str(mean_cross_entropy_cost)
 
          # Print params info
-        if(epoch%100 == 0):
+        if epoch % 100 == 0:
             for i in self.params:
                 print str(i)+" "+str(np.max(i.get_value()))+ " "+str(np.min(i.get_value()))\
                       +" "+str(np.mean(i.get_value()))+" "+str(np.mean(np.abs(i.get_value())))
@@ -198,7 +195,7 @@ class LSTM(object):
         #mean_nll_cost = mean_nll_cost/gradient_dataset.number_batches
         self.updates_pre = result
         print "Epoch "+str(epoch) + " Cost : "+str(mean_cross_entropy_cost)
-        if(epoch%10 == 0 and not epoch==0):
+        if epoch % 10 == 0 and not epoch == 0:
             print "Save!"
             self.save_params()
             for i in self.params:
@@ -488,7 +485,6 @@ if __name__ == '__main__':
     for i in range(n_updates):
         model.train(gradient_dataset,whole_train_dataset,i)
 
-    pause()
     ### EVALUTATION OF NETWORK ###
     pred_list =[]
     labels = []
